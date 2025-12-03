@@ -118,49 +118,102 @@ int dynamic_keymap_set_alt_repeat_key(uint8_t index, const vial_alt_repeat_key_e
 #endif
 
 #ifdef VIAL_HALL_EFFECT_ENABLE
-int dynamic_keymap_get_hall_effect_key_config(uint8_t row, uint8_t col, key_config_t *key) {
-    return nvm_dynamic_keymap_get_hall_effect_key_config(row, col, key);
+int dynamic_keymap_get_he_actuation_config(uint8_t profile, uint8_t row, uint8_t col, actuation_t *actuation_cfg) {
+    return nvm_dynamic_keymap_get_he_actuation_config(profile, row, col, actuation_cfg);
 }
 
-int dynamic_keymap_set_hall_effect_key_config(uint8_t row, uint8_t col, key_config_t *key) {
+int dynamic_keymap_set_he_actuation_config(uint8_t profile, uint8_t row, uint8_t col, actuation_t *actuation_cfg) {
     #ifdef SPLIT_KEYBOARD
     if (is_keyboard_master()) {
-        uint16_t actuation_point = key->actuation_point;
-        uint8_t mode = key->mode;
-        uint8_t key_config[] = {
+        if (!get_synced_status()) {
+            enable_full_sync();
+        }
+        uint8_t cfg[] = {
+            ACTUATION_SYNC,
+            profile,
             row,
             col,
-            (actuation_point >> 8) & 0xFF,
-            actuation_point & 0xFF,
-            mode
+            actuation_cfg->actuation_point,
+            actuation_cfg->rt_mode,
+            actuation_cfg->rt_press,
+            actuation_cfg->rt_release
         };
-        transaction_rpc_send(HE_CONFIG_SYNC, sizeof(key_config), key_config);
+        transaction_rpc_send(HE_CONFIG_SYNC, sizeof(cfg), cfg);
     }
     #endif
-    return nvm_dynamic_keymap_set_hall_effect_key_config(row, col, key);
+    return nvm_dynamic_keymap_set_he_actuation_config(profile, row, col, actuation_cfg);
 }
 
-int dynamic_keymap_get_hall_effect_user_config(uint8_t index, uint16_t *config) {
-    return nvm_dynamic_keymap_get_hall_effect_user_config(index, config);
+int dynamic_keymap_get_he_input_priority_pair(uint8_t index, input_priority_t *pair_cfg) {
+    return nvm_dynamic_keymap_get_he_input_priority_pair(index, pair_cfg);
 }
-
-int dynamic_keymap_set_hall_effect_user_config(uint8_t index, uint16_t *config) {
+int dynamic_keymap_set_he_input_priority_pair(uint8_t index, input_priority_t *pair_cfg) {
     #ifdef SPLIT_KEYBOARD
     if (is_keyboard_master()) {
-        uint16_t value = *config;
-        uint8_t user_config[] = {
+        if (!get_synced_status()) {
+            enable_full_sync();
+        }
+        uint8_t cfg[] = {
+            INPUT_PRIORITY_SYNC,
             index,
-            (value >> 8) & 0xFF,
-            value & 0xFF
+            pair_cfg->layer,
+            pair_cfg->primary_row,
+            pair_cfg->primary_col,
+            pair_cfg->secondary_row,
+            pair_cfg->secondary_col,
+            pair_cfg->resolution
         };
-        transaction_rpc_send(HE_CONFIG_SYNC, sizeof(user_config), user_config);
+        transaction_rpc_send(HE_CONFIG_SYNC, sizeof(cfg), cfg);
     }
     #endif
-    return nvm_dynamic_keymap_set_hall_effect_user_config(index, config);
+    return nvm_dynamic_keymap_set_he_input_priority_pair(index, pair_cfg);
 }
 
-void dynamic_keymap_reset_hall_effect(void) {
-    nvm_dynamic_keymap_reset_hall_effect();
+int dynamic_keymap_get_he_switch(uint8_t *switch_option) {
+    return nvm_dynamic_keymap_get_he_switch(switch_option);
+}
+
+int dynamic_keymap_set_he_switch(uint8_t *switch_option) {
+    #ifdef SPLIT_KEYBOARD
+    if (is_keyboard_master()) {
+        if (!get_synced_status()) {
+            enable_full_sync();
+        }
+        uint8_t cfg[] = {
+            SWITCH_OPTION_SYNC,
+            *switch_option
+        };
+        transaction_rpc_send(HE_CONFIG_SYNC, sizeof(cfg), cfg);
+    }
+    #endif
+    if (he_config.switch_option != *switch_option) {
+        enable_he_sensor_reinit();
+    }
+    return nvm_dynamic_keymap_set_he_switch(switch_option);
+}
+
+int dynamic_keymap_get_he_special_layer(uint8_t *layer_index) {
+    return nvm_dynamic_keymap_get_he_special_layer(layer_index);
+}
+
+int dynamic_keymap_set_he_special_layer(uint8_t *layer_index) {
+    #ifdef SPLIT_KEYBOARD
+    if (is_keyboard_master()) {
+        if (!get_synced_status()) {
+            enable_full_sync();
+        }
+        uint8_t cfg[] = {
+            SPECIAL_LAYER_SYNC,
+            *layer_index
+        };
+        transaction_rpc_send(HE_CONFIG_SYNC, sizeof(cfg), cfg);
+    }
+    #endif
+    return nvm_dynamic_keymap_set_he_special_layer(layer_index);
+}
+
+void dynamic_keymap_reset_he_config(void) {
+    nvm_dynamic_keymap_reset_he_config();
 }
 #endif
 
@@ -229,7 +282,8 @@ void dynamic_keymap_reset(void) {
 #endif
 
 #ifdef VIAL_HALL_EFFECT_ENABLE
-    dynamic_keymap_reset_hall_effect();
+    // dynamic_keymap_reset_hall_effect();
+    dynamic_keymap_reset_he_config();
 #endif
 
 #ifdef VIAL_ENABLE

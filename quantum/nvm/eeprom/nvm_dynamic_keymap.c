@@ -95,7 +95,8 @@ STATIC_ASSERT(DYNAMIC_KEYMAP_EEPROM_MAX_ADDR <= 65535, "DYNAMIC_KEYMAP_EEPROM_MA
 
 #ifdef VIAL_HALL_EFFECT_ENABLE
 #include "he_keys.h"
-#define VIAL_HALL_EFFECT_SIZE (sizeof(user_config_t))
+#include "he_sync.h"
+#define VIAL_HALL_EFFECT_SIZE (sizeof(he_config_t))
 #else
 #define VIAL_HALL_EFFECT_SIZE 0
 #endif
@@ -398,58 +399,150 @@ int nvm_dynamic_keymap_set_alt_repeat_key(uint8_t index, const vial_alt_repeat_k
 #endif
 
 #ifdef VIAL_HALL_EFFECT_ENABLE
-int nvm_dynamic_keymap_get_hall_effect_key_config(uint8_t row, uint8_t col, key_config_t *key) {
-    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + sizeof(uint16_t) + sizeof(uint16_t) + ((row * MATRIX_COLS + col) * sizeof(key_config_t));
-    eeprom_read_block(key, address, sizeof(key_config_t));
+int nvm_dynamic_keymap_get_he_actuation_config(uint8_t profile, uint8_t row, uint8_t col, actuation_t *actuation_cfg) {
+    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + 
+                    ((MATRIX_ROWS * MATRIX_COLS * profile) * sizeof(actuation_t)) + 
+                    ((row * MATRIX_COLS + col) * sizeof(actuation_t));
+
+    eeprom_read_block(actuation_cfg, address, sizeof(actuation_t));
     
     return 0;
 }
 
-int nvm_dynamic_keymap_set_hall_effect_key_config(uint8_t row, uint8_t col, key_config_t *key) {
-    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + sizeof(uint16_t) + sizeof(uint16_t) + ((row * MATRIX_COLS + col) * sizeof(key_config_t));
-    eeprom_write_block(key, address, sizeof(key_config_t));
+int nvm_dynamic_keymap_set_he_actuation_config(uint8_t profile, uint8_t row, uint8_t col, actuation_t *actuation_cfg) {
+    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + 
+                    ((MATRIX_ROWS * MATRIX_COLS * profile) * sizeof(actuation_t)) + 
+                    ((row * MATRIX_COLS + col) * sizeof(actuation_t));
 
-    user_config.key_config[row][col] = *key;
+    eeprom_write_block(actuation_cfg, address, sizeof(actuation_t));
+
+    he_config.actuation_matrix[profile][row][col] = *actuation_cfg;
     
     return 0;
 }
 
-int nvm_dynamic_keymap_get_hall_effect_user_config(uint8_t index, uint16_t *config) {
-    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR + index * sizeof(uint16_t));
-    eeprom_read_block(config, address, sizeof(uint16_t));
+int nvm_dynamic_keymap_get_he_input_priority_pair(uint8_t index, input_priority_t *pair_cfg) {
+    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + 
+                    (MATRIX_ROWS * MATRIX_COLS * ACTUATION_PROFILE_COUNT * sizeof(actuation_t)) + 
+                    (index * sizeof(input_priority_t));
+
+    eeprom_read_block(pair_cfg, address, sizeof(input_priority_t));
     
     return 0;
 }
 
-int nvm_dynamic_keymap_set_hall_effect_user_config(uint8_t index, uint16_t *config) {
-    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR + index * sizeof(uint16_t));
-    eeprom_write_block(config, address, sizeof(uint16_t));
+int nvm_dynamic_keymap_set_he_input_priority_pair(uint8_t index, input_priority_t *pair_cfg) {
 
-    if (index == 0) {
-        user_config.travel_distance = *config;
-    } else if (index == 1) {
-        user_config.sensitivity = *config;
+    input_priority_t *old_pair = &he_config.input_priority_pairs[index];
+
+    if (old_pair->layer != INPUT_PRIORITY_PAIR_DISABLED) {
+        if (old_pair->primary_row < MATRIX_ROWS && old_pair->primary_col < MATRIX_COLS) {
+            input_priority_indices[old_pair->layer][old_pair->primary_row][old_pair->primary_col] = 0;
+        }
+        if (old_pair->secondary_row < MATRIX_ROWS && old_pair->secondary_col < MATRIX_COLS) {
+            input_priority_indices[old_pair->layer][old_pair->secondary_row][old_pair->secondary_col] = 0;
+        }
+    }
+
+    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + 
+                    (MATRIX_ROWS * MATRIX_COLS * ACTUATION_PROFILE_COUNT * sizeof(actuation_t)) + 
+                    (index * sizeof(input_priority_t));
+
+    eeprom_write_block(pair_cfg, address, sizeof(input_priority_t));
+    he_config.input_priority_pairs[index] = *pair_cfg;
+
+    if (pair_cfg->layer != INPUT_PRIORITY_PAIR_DISABLED) {
+        if (pair_cfg->primary_row < MATRIX_ROWS && pair_cfg->primary_col < MATRIX_COLS) {
+             input_priority_indices[pair_cfg->layer][pair_cfg->primary_row][pair_cfg->primary_col] = index + 1;
+        }
+        if (pair_cfg->secondary_row < MATRIX_ROWS && pair_cfg->secondary_col < MATRIX_COLS) {
+            input_priority_indices[pair_cfg->layer][pair_cfg->secondary_row][pair_cfg->secondary_col] = index + 1;
+        }
     }
     
     return 0;
 }
 
-void nvm_dynamic_keymap_reset_hall_effect(void) {
-    user_config.travel_distance = TRAVEL_DISTANCE;
-    user_config.sensitivity = SENSITIVITY;
-    nvm_dynamic_keymap_set_hall_effect_user_config(0, &user_config.travel_distance);
-    nvm_dynamic_keymap_set_hall_effect_user_config(1, &user_config.sensitivity);
+int nvm_dynamic_keymap_get_he_switch(uint8_t *switch_option) {
+    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + 
+                    (MATRIX_ROWS * MATRIX_COLS * ACTUATION_PROFILE_COUNT * sizeof(actuation_t)) + 
+                    (NUM_INPUT_PRIORITY_PAIRS * sizeof(input_priority_t));
 
-    key_config_t key = {
-        .actuation_point = ACTUATION_POINT,
-        .mode = RAPID_TRIGGER_MODE,
+    eeprom_read_block(switch_option, address, sizeof(uint8_t));
+    return 0;
+}
+
+int nvm_dynamic_keymap_set_he_switch(uint8_t *switch_option) {
+    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + 
+                    (MATRIX_ROWS * MATRIX_COLS * ACTUATION_PROFILE_COUNT * sizeof(actuation_t)) + 
+                    (NUM_INPUT_PRIORITY_PAIRS * sizeof(input_priority_t));
+
+    eeprom_write_block(switch_option, address, sizeof(uint8_t));
+
+    he_config.switch_option = *switch_option;
+    
+    return 0;
+}
+
+int nvm_dynamic_keymap_get_he_special_layer(uint8_t *layer_index) {
+    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + 
+                    (MATRIX_ROWS * MATRIX_COLS * ACTUATION_PROFILE_COUNT * sizeof(actuation_t)) + 
+                    (NUM_INPUT_PRIORITY_PAIRS * sizeof(input_priority_t)) +
+                    sizeof(uint8_t);
+    eeprom_read_block(layer_index, address, sizeof(uint8_t));
+
+    return 0;
+}
+
+int nvm_dynamic_keymap_set_he_special_layer(uint8_t *layer_index) {
+    void *address = (void*)(VIAL_HALL_EFFECT_EEPROM_ADDR) + 
+                    (MATRIX_ROWS * MATRIX_COLS * ACTUATION_PROFILE_COUNT * sizeof(actuation_t)) + 
+                    (NUM_INPUT_PRIORITY_PAIRS * sizeof(input_priority_t)) +
+                    sizeof(uint8_t);
+    eeprom_write_block(layer_index, address, sizeof(uint8_t));
+
+    he_config.special_layer = *layer_index;
+
+    return 0;
+}
+
+void nvm_dynamic_keymap_reset_he_config(void) {
+    he_config.switch_option = DEFAULT_SWITCH;
+    nvm_dynamic_keymap_set_he_switch(&he_config.switch_option);
+
+    he_config.special_layer = DEFAULT_SPECIAL_LAYER;
+    nvm_dynamic_keymap_set_he_special_layer(&he_config.special_layer);
+
+    actuation_t actuation_config = {
+        .actuation_point = DEFAULT_ACTUATION,
+        .rt_mode = DEFAULT_RT_MODE,
+        .rt_press = DEFAULT_RT_PRESS,
+        .rt_release = DEFAULT_RT_RELEASE
     };
 
-    for (int row = 0; row < MATRIX_ROWS; row++) {
-        for (int col = 0; col < MATRIX_COLS; col++) {
-            user_config.key_config[row][col] = key;
-            nvm_dynamic_keymap_set_hall_effect_key_config(row, col, &key);
+    for (int profile = 0; profile < ACTUATION_PROFILE_COUNT; profile ++) {
+        for (int row = 0; row < MATRIX_ROWS; row++) {
+            for (int col = 0; col < MATRIX_COLS; col++) {
+                he_config.actuation_matrix[profile][row][col] = actuation_config;
+                nvm_dynamic_keymap_set_he_actuation_config(profile, row, col, &actuation_config);
+            }
         }
+    }
+
+    memset(input_priority_indices, 0, sizeof(input_priority_indices));
+
+    input_priority_t input_priority_pair = {
+        .layer = INPUT_PRIORITY_PAIR_DISABLED,
+        .primary_row = INPUT_PRIORITY_PAIR_DISABLED,
+        .primary_col = INPUT_PRIORITY_PAIR_DISABLED,
+        .secondary_row = INPUT_PRIORITY_PAIR_DISABLED,
+        .secondary_col = INPUT_PRIORITY_PAIR_DISABLED,
+        .resolution = INPUT_PRIORITY_PAIR_DISABLED
+    };
+
+    for (int index = 0; index < NUM_INPUT_PRIORITY_PAIRS; index++) {
+        he_config.input_priority_pairs[index] = input_priority_pair;
+        nvm_dynamic_keymap_set_he_input_priority_pair(index, &he_config.input_priority_pairs[index]);
     }
 }
 #endif

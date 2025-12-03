@@ -333,45 +333,60 @@ void vial_handle_cmd(uint8_t *msg, uint8_t length) {
             break;
         }
 #ifdef VIAL_HALL_EFFECT_ENABLE
-        case vial_hall_effect_get_key_config: {
-            key_config_t config;
-            uint8_t row = msg[2];
-            uint8_t col = msg[3];
-            msg[0] = dynamic_keymap_get_hall_effect_key_config(row, col, &config);
-            memcpy(&msg[1], &config, sizeof(config));
+        case vial_get_he_actuation_config: {
+            actuation_t actuation_cfg;
+            uint8_t profile = msg[2];
+            uint8_t row = msg[3];
+            uint8_t col = msg[4];
+            msg[0] = dynamic_keymap_get_he_actuation_config(profile, row, col, &actuation_cfg);
+            memcpy(&msg[1], &actuation_cfg, sizeof(actuation_cfg));
             break;
         }
-        case vial_hall_effect_set_key_config: {
-            key_config_t config;
-            uint8_t row = msg[2];
-            uint8_t col = msg[3];
-            memcpy(&config, &msg[4], sizeof(config));
-            msg[0] = dynamic_keymap_set_hall_effect_key_config(row, col, &config);
-            // reload_hall_effect();
+        case vial_set_he_actuation_config: {
+            actuation_t actuation_cfg;
+            uint8_t profile = msg[2];
+            uint8_t row = msg[3];
+            uint8_t col = msg[4];
+            memcpy(&actuation_cfg, &msg[5], sizeof(actuation_cfg));
+            msg[0] = dynamic_keymap_set_he_actuation_config(profile, row, col, &actuation_cfg);
             break;
         }
-        case vial_hall_effect_get_user_config: {
-            uint16_t config;
-            uint8_t idx = msg[2];
-            msg[0] = dynamic_keymap_get_hall_effect_user_config(idx, &config);
-            memcpy(&msg[1], &config, sizeof(config));
+        case vial_get_he_input_priority_pair: {
+            input_priority_t pair_cfg;
+            uint8_t index = msg[2];
+            msg[0] = dynamic_keymap_get_he_input_priority_pair(index, &pair_cfg);
+            memcpy(&msg[1], &pair_cfg, sizeof(pair_cfg));
             break;
         }
-        case vial_hall_effect_set_user_config: {
-            uint16_t config;
-            uint8_t idx = msg[2];
-            memcpy(&config, &msg[3], sizeof(config));
-            msg[0] = dynamic_keymap_set_hall_effect_user_config(idx, &config);
-            // reload_hall_effect();
+        case vial_set_he_input_priority_pair: {
+            input_priority_t pair_cfg;
+            uint8_t index = msg[2];
+            memcpy(&pair_cfg, &msg[3], sizeof(pair_cfg));
+            msg[0] = dynamic_keymap_set_he_input_priority_pair(index, &pair_cfg);
             break;
         }
-        case vial_hall_effect_get_handedness: {
-            #ifdef SPLIT_KEYBOARD
-                msg[0] = is_keyboard_left() ? 0 : MATRIX_ROWS / 2;
-            #else
-                msg[0] = MATRIX_ROWS;
-            #endif
-            
+        case vial_get_he_switch: {
+            uint8_t switch_option;
+            msg[0] = dynamic_keymap_get_he_switch(&switch_option);
+            memcpy(&msg[1], &switch_option, sizeof(switch_option));
+            break;
+        }
+        case vial_set_he_switch: {
+            uint8_t switch_option;
+            memcpy(&switch_option, &msg[2], sizeof(switch_option));
+            msg[0] = dynamic_keymap_set_he_switch(&switch_option);
+            break;
+        }
+        case vial_get_he_special_layer: {
+            uint8_t layer_index;
+            msg[0] = dynamic_keymap_get_he_special_layer(&layer_index);
+            memcpy(&msg[1], &layer_index, sizeof(layer_index));
+            break;
+        }
+        case vial_set_he_special_layer: {
+            uint8_t layer_index;
+            memcpy(&layer_index, &msg[2], sizeof(layer_index));
+            msg[0] = dynamic_keymap_set_he_special_layer(&layer_index);
             break;
         }
     
@@ -831,12 +846,35 @@ uint16_t get_alt_repeat_key_keycode_user(uint16_t keycode, uint8_t mods) {
 
 #ifdef VIAL_HALL_EFFECT_ENABLE
 static void reload_hall_effect(void) {
-    dynamic_keymap_get_hall_effect_user_config(0, &user_config.travel_distance);
-    dynamic_keymap_get_hall_effect_user_config(1, &user_config.sensitivity);
+    dynamic_keymap_get_he_switch(&he_config.switch_option);
+    dynamic_keymap_get_he_special_layer(&he_config.special_layer);
 
-    for (int row = 0; row < MATRIX_ROWS; row++) {
-        for (int col = 0; col < MATRIX_COLS; col++) {
-            dynamic_keymap_get_hall_effect_key_config(row, col, &user_config.key_config[row][col]);
+    for (int profile = 0; profile < ACTUATION_PROFILE_COUNT; profile ++) {
+        for (int row = 0; row < MATRIX_ROWS; row++) {
+            for (int col = 0; col < MATRIX_COLS; col++) {
+                dynamic_keymap_get_he_actuation_config(profile, row, col, &he_config.actuation_matrix[profile][row][col]);
+            }
+        }
+    }
+
+    memset(input_priority_indices, 0, sizeof(input_priority_indices));
+
+    for (int index = 0; index < NUM_INPUT_PRIORITY_PAIRS; index++) {
+        dynamic_keymap_get_he_input_priority_pair(index, &he_config.input_priority_pairs[index]);
+
+        input_priority_t *pair_cfg = &he_config.input_priority_pairs[index];
+
+        if (pair_cfg->layer != INPUT_PRIORITY_PAIR_DISABLED) {
+            if (pair_cfg->primary_row < MATRIX_ROWS && pair_cfg->primary_col < MATRIX_COLS) {
+                input_priority_indices[pair_cfg->layer]
+                                      [pair_cfg->primary_row]
+                                      [pair_cfg->primary_col] = index + 1;
+            }
+            if (pair_cfg->secondary_row < MATRIX_ROWS && pair_cfg->secondary_col < MATRIX_COLS) {
+                input_priority_indices[pair_cfg->layer]
+                                      [pair_cfg->secondary_row]
+                                      [pair_cfg->secondary_col] = index + 1;
+            }
         }
     }
 }

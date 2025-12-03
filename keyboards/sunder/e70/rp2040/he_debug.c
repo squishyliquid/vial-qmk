@@ -34,16 +34,10 @@ void print_key_matrix(const uint8_t keys_arr[][3], size_t len) {
             uprintf("\n");
         }
 
-#if defined(DEBUG_MATRIX_SCAN_RATE)
         uprintf("(%u, %u, %u) ",
-                keys[k_row][k_col].curr_pos,
-                keys[k_row][k_col].max_value,
-                keys[k_row][k_col].test_value);
-#else
-        uprintf("(%u, %u) ",
-                keys[k_row][k_col].curr_pos,
-                keys[k_row][k_col].min_value);
-#endif
+                key_matrix[k_row][k_col].pos_curr,
+                key_matrix[k_row][k_col].adc_max,
+                key_matrix[k_row][k_col].adc_val);
 
     }
     uprintf("\n\n");

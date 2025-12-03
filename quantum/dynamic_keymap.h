@@ -59,11 +59,17 @@ int dynamic_keymap_set_alt_repeat_key(uint8_t index, const vial_alt_repeat_key_e
 #endif
 #ifdef VIAL_HALL_EFFECT_ENABLE
 #include "he_keys.h"
-int dynamic_keymap_get_hall_effect_key_config(uint8_t row, uint8_t col, key_config_t *key);
-int dynamic_keymap_set_hall_effect_key_config(uint8_t row, uint8_t col, key_config_t *key);
-int dynamic_keymap_get_hall_effect_user_config(uint8_t index, uint16_t *config);
-int dynamic_keymap_set_hall_effect_user_config(uint8_t index, uint16_t *config);
-void dynamic_keymap_reset_hall_effect(void);
+#include "he_sync.h"
+#include "he_matrix.h"
+int dynamic_keymap_get_he_actuation_config(uint8_t profile, uint8_t row, uint8_t col, actuation_t *actuation_cfg);
+int dynamic_keymap_set_he_actuation_config(uint8_t profile, uint8_t row, uint8_t col, actuation_t *actuation_cfg);
+int dynamic_keymap_get_he_input_priority_pair(uint8_t index, input_priority_t *pair_cfg);
+int dynamic_keymap_set_he_input_priority_pair(uint8_t index, input_priority_t *pair_cfg);
+int dynamic_keymap_get_he_switch(uint8_t *switch_option);
+int dynamic_keymap_set_he_switch(uint8_t *switch_option);
+int dynamic_keymap_get_he_special_layer(uint8_t *layer_index);
+int dynamic_keymap_set_he_special_layer(uint8_t *layer_index);
+void dynamic_keymap_reset_he_config(void);
 #endif
 void     dynamic_keymap_reset(void);
 // These get/set the keycodes as stored in the EEPROM buffer

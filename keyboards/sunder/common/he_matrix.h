@@ -11,8 +11,14 @@
 #    define ROWS_PER_HAND (MATRIX_ROWS)
 #endif
 
-extern uint16_t *lut;
+extern uint8_t *lut;
 
-void init_mux_pins(void);
+void mux_pin_init(void);
 
-void initialise_hall_sensors(void);
+void he_sensor_init(void);
+
+bool get_synced_status(void);
+
+void enable_full_sync(void);
+
+void enable_he_sensor_reinit(void);

@@ -5,7 +5,7 @@
 
 #include <stdint.h>
 
-extern uint16_t lut_320[];
-extern uint16_t lut_350[];
-extern uint16_t lut_380[];
-extern uint16_t lut_390[];
+extern uint8_t lut_320[];
+extern uint8_t lut_340[];
+extern uint8_t lut_380[];
+extern uint8_t lut_390[];

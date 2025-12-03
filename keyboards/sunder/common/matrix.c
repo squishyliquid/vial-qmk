@@ -24,7 +24,12 @@ uint8_t thisHand, thatHand;
 #endif
 
 matrix_row_t matrix[MATRIX_ROWS];
-analog_key_t keys[ROWS_PER_HAND][MATRIX_COLS];
+
+matrix_row_t press_states[ROWS_PER_HAND];
+key_state_t key_matrix[ROWS_PER_HAND][MATRIX_COLS];
+
+input_priority_state_t input_priority_states[NUM_INPUT_PRIORITY_PAIRS];
+uint8_t input_priority_indices[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_COLS];
 
 #if defined(DEBUG_MATRIX_SCAN_RATE)
 static uint32_t matrix_timer = 0;
@@ -116,8 +121,8 @@ void matrix_init(void) {
 
     memset(matrix, 0, sizeof(matrix));
     adc_dma_init();
-    init_mux_pins();
-    initialise_hall_sensors();
+    mux_pin_init();
+    he_sensor_init();
 
     // This *must* be called for correct keyboard behavior
     matrix_init_kb();
@@ -132,87 +137,249 @@ uint8_t matrix_scan(void) {
     #else
     memcpy(curr_matrix, matrix, sizeof(matrix));
     #endif
+
+    uint8_t profile = LAYER_UNIVERSAL;
+    uint8_t current_layer = get_highest_layer(layer_state);
     
-    for (uint8_t col_index = 0; col_index < MATRIX_COLS; col_index++) {
-        set_mux_pins(col_index);
+    if (he_config.special_layer != 0 && current_layer == he_config.special_layer - 1)
+        profile = LAYER_SPECIAL;
+
+    const uint8_t act_buf = he_config.switch_option == 0 ? 8 : 7;
+    
+    for (uint8_t col = 0; col < MATRIX_COLS; col++) {
+        set_mux_pins(col);
         adcConvert(&ADCD1, &adcgrpcfg, adc_buf, ADC_BUFFER_DEPTH);
         
-        for (uint8_t row_index = 0; row_index < ROWS_PER_HAND; row_index++) {
-            analog_key_t *key = &keys[row_index][col_index];
+        for (uint8_t row = 0; row < ROWS_PER_HAND; row++) {
+            key_state_t *key_state = &key_matrix[row][col];
 
-            if (key->max_value == 0) {
-                continue;
+            if (key_state->adc_max == 0) continue;
+
+            actuation_t *actuation_cfg = &he_config.actuation_matrix[profile][row + thisHand][col];
+            key_state->adc_val = adc_buf[row];
+
+            if (key_state->adc_val > key_state->adc_max + MIN_MAX_BUFFER) {
+                key_state->adc_max = key_state->adc_val;
+
+                uint32_t range = key_state->adc_max - key_state->adc_min;
+                const uint32_t target_resolution_shifted = 67108864;
+                key_state->scale = (target_resolution_shifted + (range >> 1)) / range;
+            } else {
+                key_state->adc_val = MIN(MAX(key_state->adc_min, key_state->adc_val), key_state->adc_max);
             }
 
-            uint16_t analog_value = adc_buf[row_index];
-
-            key_config_t *config = &user_config.key_config[row_index + thisHand][col_index]; 
-
-            #if defined(DEBUG_MATRIX_SCAN_RATE)
-            key->test_value = analog_value;
-            #endif
-
-            if (analog_value > key->max_value + MIN_MAX_BUFFER)
-                key->max_value = analog_value;
-            else
-                analog_value = MIN(MAX(key->min_value, analog_value), key->max_value);
-
-            // Calculate current position
-            uint32_t curr_value = analog_value - key->min_value;
-            uint16_t range = key->max_value - key->min_value;
-            uint16_t norm_value = ((curr_value << 10) + (range >> 1)) / range;
-
-            key->curr_pos = ((uint32_t)lut[norm_value] * user_config.travel_distance + 512) >> 10;
+            uint32_t curr_offset = key_state->adc_val - key_state->adc_min;
+            uint16_t norm_value = ((curr_offset * key_state->scale) + 0x8000) >> 16;
+            key_state->pos_curr = lut[norm_value];
 
             // Update key states
-            if (config->mode != 0) {
-                // Rapid Trigger mode enabled
-                if (key->dynamic_actuation) {
-                    if (curr_matrix[row_index] & (1 << col_index)) {
-                        // Key is 'pressed'
-                        if (key->curr_pos > key->prev_pos) {
-                            key->prev_pos = key->curr_pos;
-                        } else if (key->curr_pos < key->prev_pos - user_config.sensitivity) {
-                            curr_matrix[row_index] &= ~(1 << col_index);
-                            key->prev_pos = key->curr_pos;
-                        }
-                    } else {
-                        // Key is 'not pressed'
-                        if (key->curr_pos < key->prev_pos) {
-                            key->prev_pos = key->curr_pos;
-                        } else if (key->curr_pos > key->prev_pos + user_config.sensitivity) {
-                            curr_matrix[row_index] |= (1 << col_index);
-                            key->prev_pos = key->curr_pos;
-                        }
-                    }
-                    if ((config->mode == 1 && key->curr_pos <= config->actuation_point - 10) || (config->mode == 2 && key->curr_pos == 0)) {
-                        // Key is above reset point
-                        curr_matrix[row_index] &= ~(1 << col_index);
-                        key->prev_pos = key->curr_pos; //
-                        key->dynamic_actuation = false;
-                    }
-                } else if (key->curr_pos > config->actuation_point) {
-                    curr_matrix[row_index] |= (1 << col_index);
-                    key->prev_pos = key->curr_pos; //
-                    key->dynamic_actuation = true;
+            if (actuation_cfg->rt_mode == 0) {
+                key_state->key_dir = KEY_DIR_INACTIVE;
+                
+                if (key_state->pos_curr > actuation_cfg->actuation_point) {
+                    key_state->is_pressed = true;
+                } else if (key_state->pos_curr <= (actuation_cfg->actuation_point - act_buf)) {
+                    key_state->is_pressed = false;
                 }
             } else {
-                // Rapid Trigger mode disabled
-                if (curr_matrix[row_index] & (1 << col_index)) {
-                    // Key is 'pressed'
-                    if (key->curr_pos <= config->actuation_point - 10) {
-                        curr_matrix[row_index] &= ~(1 << col_index);
+                // Rapid Trigger
+                uint8_t rt_release = (actuation_cfg->rt_release == 0) ? actuation_cfg->rt_press : actuation_cfg->rt_release;
+                uint8_t reset_point = (actuation_cfg->rt_mode == 2) ? 0 : (actuation_cfg->actuation_point - act_buf);
+                
+                if (key_state->key_dir == KEY_DIR_INACTIVE) {
+                    if (key_state->pos_curr > actuation_cfg->actuation_point) {
+                        key_state->pos_curr = key_state->pos_curr;
+                        key_state->key_dir = KEY_DIR_DOWN;
+                        key_state->is_pressed = true;
                     }
-                } else {
-                    // Key is 'not pressed'
-                    if (key->curr_pos > config->actuation_point) {
-                        curr_matrix[row_index] |= (1 << col_index);
+                } 
+                else {
+                    // Active State (DOWN or UP)
+                    if (key_state->pos_curr <= reset_point) {
+                        key_state->pos_prev = key_state->pos_curr;
+                        key_state->key_dir = KEY_DIR_INACTIVE;
+                        key_state->is_pressed = false;
+                    }
+                    else if (key_state->key_dir == KEY_DIR_DOWN) {
+                        if (key_state->pos_curr > key_state->pos_prev) {
+                            key_state->pos_prev = key_state->pos_curr; 
+                        } else if ((key_state->pos_prev > key_state->pos_curr) && ((key_state->pos_prev - key_state->pos_curr) > rt_release)) {
+                            key_state->pos_prev = key_state->pos_curr;
+                            key_state->key_dir = KEY_DIR_UP;
+                            key_state->is_pressed = false;
+                        }
+                    } 
+                    else { // KEY_DIR_UP
+                        if (key_state->pos_curr < key_state->pos_prev) {
+                            key_state->pos_prev = key_state->pos_curr;
+                        } else if ((key_state->pos_curr > key_state->pos_prev) && ((key_state->pos_curr - key_state->pos_prev) > actuation_cfg->rt_press)) {
+                            key_state->pos_prev = key_state->pos_curr;
+                            key_state->key_dir = KEY_DIR_DOWN;
+                            key_state->is_pressed = true;
+                        }
                     }
                 }
             }
         }
     }
-    
+
+    for (uint8_t col = 0; col < MATRIX_COLS; col++) {
+
+        for (uint8_t row = 0; row < ROWS_PER_HAND; row++) {
+
+            bool prev_pressed = (press_states[row] & (1 << col));
+            key_state_t *key_state = &key_matrix[row][col];
+            
+
+            if (!prev_pressed && key_state->is_pressed) {
+                uint8_t pair_index = input_priority_indices[current_layer][row + thisHand][col];
+                if (pair_index) {
+                    const input_priority_t *pair_cfg = &he_config.input_priority_pairs[pair_index - 1];
+                    input_priority_state_t *pair_state = &input_priority_states[pair_index - 1];
+
+                    uint8_t row_pairs[] = {
+                        pair_cfg->primary_row - thisHand,
+                        pair_cfg->secondary_row - thisHand,
+                    };
+
+                    uint8_t col_pairs[] = {
+                        pair_cfg->primary_col,
+                        pair_cfg->secondary_col,
+                    };
+
+                    const uint8_t index = (row == row_pairs[0] && col == col_pairs[0]) ? 0 : 1;
+                    
+                    bool is_pressed[] = {
+                        key_matrix[row_pairs[0]][col_pairs[0]].is_pressed,
+                        key_matrix[row_pairs[1]][col_pairs[1]].is_pressed,
+                    };
+                    
+                    if (is_pressed[0] & is_pressed[1]) {
+                        if (pair_cfg->resolution == INPUT_PRIORITY_RESOLUTION_DEPTH) {
+                            is_pressed[index] = key_matrix[row_pairs[index]][col_pairs[index]].pos_curr >=
+                                                key_matrix[row_pairs[index ^ 1]][col_pairs[index ^ 1]].pos_curr + act_buf;
+                            is_pressed[index ^ 1] = !is_pressed[index];
+                        } else {
+                            is_pressed[index] =
+                                (pair_cfg->resolution != INPUT_PRIORITY_RESOLUTION_NEUTRAL) &
+                                ((pair_cfg->resolution == INPUT_PRIORITY_RESOLUTION_LAST) |
+                                ((pair_cfg->resolution == INPUT_PRIORITY_RESOLUTION_PRIMARY) & (index == 0)) |
+                                ((pair_cfg->resolution == INPUT_PRIORITY_RESOLUTION_SECONDARY) & (index == 1)));
+
+                            is_pressed[index ^ 1] =
+                                (pair_cfg->resolution != INPUT_PRIORITY_RESOLUTION_NEUTRAL) & !is_pressed[index];
+                        }
+                    }
+
+                    for (uint32_t i = 0; i < 2; i++) {
+                        if (is_pressed[i] & !pair_state->is_pressed[i]) {
+                            pair_state->is_pressed[i] = is_pressed[i];
+                            curr_matrix[row_pairs[i]] |= (1 << col_pairs[i]);
+                        } else if (!is_pressed[i] & pair_state->is_pressed[i]) {
+                            pair_state->is_pressed[i] = is_pressed[i];
+                            curr_matrix[row_pairs[i]] &= ~(1 << col_pairs[i]);
+                        }
+                    }
+
+                } else {
+                    curr_matrix[row] |= (1 << col);
+                }
+                press_states[row] |= (1 << col);
+
+            } else if (prev_pressed && !key_state->is_pressed) {
+                uint8_t pair_index = input_priority_indices[current_layer][row + thisHand][col];
+                if (pair_index) {
+                    const input_priority_t *pair_cfg = &he_config.input_priority_pairs[pair_index - 1];
+                    input_priority_state_t *pair_state = &input_priority_states[pair_index - 1];
+
+                    uint8_t row_pairs[] = {
+                        pair_cfg->primary_row - thisHand,
+                        pair_cfg->secondary_row - thisHand,
+                    };
+
+                    uint8_t col_pairs[] = {
+                        pair_cfg->primary_col,
+                        pair_cfg->secondary_col,
+                    };
+
+                    bool is_pressed[] = {
+                        key_matrix[row_pairs[0]][col_pairs[0]].is_pressed,
+                        key_matrix[row_pairs[1]][col_pairs[1]].is_pressed,
+                    };
+
+                    for (uint32_t i = 0; i < 2; i++) {
+                        if (is_pressed[i] & !pair_state->is_pressed[i]) {
+                            pair_state->is_pressed[i] = is_pressed[i];
+                            curr_matrix[row_pairs[i]] |= (1 << col_pairs[i]);
+                        } else if (!is_pressed[i] & pair_state->is_pressed[i]) {
+                            pair_state->is_pressed[i] = is_pressed[i];
+                            curr_matrix[row_pairs[i]] &= ~(1 << col_pairs[i]);
+                        }
+                    }
+
+                } else {
+                    curr_matrix[row] &= ~(1 << col);
+                }
+                press_states[row] &= ~(1 << col);
+
+            } else if (key_state->is_pressed) {
+                uint8_t pair_index = input_priority_indices[current_layer][row + thisHand][col];
+                if (pair_index) {
+                    const input_priority_t *pair_cfg = &he_config.input_priority_pairs[pair_index - 1];
+                    input_priority_state_t *pair_state = &input_priority_states[pair_index - 1];
+
+                    uint8_t row_pairs[] = {
+                        pair_cfg->primary_row - thisHand,
+                        pair_cfg->secondary_row - thisHand,
+                    };
+
+                    uint8_t col_pairs[] = {
+                        pair_cfg->primary_col,
+                        pair_cfg->secondary_col,
+                    };
+
+                    const uint8_t index = (row == row_pairs[0] && col == col_pairs[0]) ? 0 : 1;
+                    
+                    bool is_pressed[] = {
+                        key_matrix[row_pairs[0]][col_pairs[0]].is_pressed,
+                        key_matrix[row_pairs[1]][col_pairs[1]].is_pressed,
+                    };
+                    
+                    if (pair_cfg->resolution == INPUT_PRIORITY_RESOLUTION_DEPTH && (is_pressed[0] & is_pressed[1])) {
+                        if ((key_matrix[row_pairs[index]][col_pairs[index]].pos_curr >= 255 - act_buf) &&
+                            (key_matrix[row_pairs[index ^ 1]][col_pairs[index ^ 1]].pos_curr >= 255 - act_buf)) {
+                            
+                            is_pressed[0] = is_pressed[1] = true;
+
+                        } else if (!pair_state->is_pressed[index]) {
+                            is_pressed[index] = key_matrix[row_pairs[index]][col_pairs[index]].pos_curr >=
+                                                key_matrix[row_pairs[index ^ 1]][col_pairs[index ^ 1]].pos_curr + act_buf;
+                            is_pressed[index ^ 1] = !is_pressed[index];
+                        } else if (pair_state->is_pressed[index ^ 1]) {
+                            is_pressed[index] = key_matrix[row_pairs[index]][col_pairs[index]].pos_curr >= 255 - act_buf;
+                        } else {
+                            is_pressed[0] = pair_state->is_pressed[0];
+                            is_pressed[1] = pair_state->is_pressed[1];
+                        }
+                    } else {
+                        is_pressed[0] = pair_state->is_pressed[0];
+                        is_pressed[1] = pair_state->is_pressed[1];
+                    }
+
+                    for (uint32_t i = 0; i < 2; i++) {
+                        if (is_pressed[i] & !pair_state->is_pressed[i]) {
+                            pair_state->is_pressed[i] = is_pressed[i];
+                            curr_matrix[row_pairs[i]] |= (1 << col_pairs[i]);
+                        } else if (!is_pressed[i] & pair_state->is_pressed[i]) {
+                            pair_state->is_pressed[i] = is_pressed[i];
+                            curr_matrix[row_pairs[i]] &= ~(1 << col_pairs[i]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     #if defined(DEBUG_MATRIX_SCAN_RATE)
     uint32_t timer_now = timer_read32();
     
@@ -224,7 +391,6 @@ uint8_t matrix_scan(void) {
         } else {
             print_key_matrix(right_print_index, right_print_index_len);
         }
-        
         matrix_timer = timer_now;
     }
     #endif

@@ -5,6 +5,7 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include "lut.h"
 
 #ifdef SPLIT_KEYBOARD
 #    define ROWS_PER_HAND (MATRIX_ROWS / 2)
@@ -14,50 +15,85 @@
 
 #define MIN_MAX_BUFFER 5
 
-#ifndef RAPID_TRIGGER_MODE
-#   define RAPID_TRIGGER_MODE 1
-#endif
+typedef enum {
+    SWITCH_320 = 0,
+    SWITCH_340,
+    SWITCH_350,
+    SWITCH_380,
+    SWITCH_390
+} switch_t;
 
-#ifndef TRAVEL_DISTANCE
-#   define TRAVEL_DISTANCE 350
-#endif
-
-#ifndef ACTUATION_POINT
-#   define ACTUATION_POINT 170
-#endif
-
-#ifndef SENSITIVITY
-#   define SENSITIVITY 45
-#endif
-
-typedef struct {
-    uint16_t actuation_point;
-    uint8_t mode; //0 = no rapid trigger, 1 = rapid trigger, 2 = continuous rapid trigger
-} key_config_t;
+#define DEFAULT_ACTUATION 124
+#define DEFAULT_RT_MODE 0
+#define DEFAULT_RT_PRESS 0
+#define DEFAULT_RT_RELEASE 0
+#define DEFAULT_SWITCH SWITCH_350
+#define DEFAULT_SPECIAL_LAYER 0
+#define NUM_INPUT_PRIORITY_PAIRS 8
+#define INPUT_PRIORITY_PAIR_DISABLED 255
 
 typedef struct {
-    uint16_t travel_distance;
-    uint16_t sensitivity;
-    key_config_t key_config[MATRIX_ROWS][MATRIX_COLS];
-} user_config_t;
+    uint8_t actuation_point;
+    uint8_t rt_mode;
+    uint8_t rt_press;
+    uint8_t rt_release;
+} actuation_t;
 
-extern user_config_t user_config;
+typedef enum {
+    KEY_DIR_INACTIVE = 0,
+    KEY_DIR_DOWN,
+    KEY_DIR_UP,
+} key_dir_t;
 
 typedef struct {
-    bool dynamic_actuation;
-    uint16_t curr_pos;
-    uint16_t prev_pos;
-    uint16_t max_value;
-    uint16_t min_value;
-    uint16_t value_05;
-    uint16_t value_10;
-    uint16_t value_15;
-    uint16_t value_20;
-    uint16_t value_25;
-    uint16_t value_30;
-    #if defined(DEBUG_MATRIX_SCAN_RATE)
-    uint16_t test_value;
-    #endif
-} analog_key_t;
+    uint16_t adc_val;
+    uint16_t adc_min;
+    uint16_t adc_max;
+    uint16_t adc_bp[IDX_COUNT];
 
-extern analog_key_t keys[ROWS_PER_HAND][MATRIX_COLS];
+    uint8_t pos_curr;
+    uint8_t pos_prev;
+    uint8_t key_dir;
+    bool is_pressed;
+} key_state_t;
+
+extern key_state_t key_matrix[ROWS_PER_HAND][MATRIX_COLS];
+
+typedef enum {
+    LAYER_UNIVERSAL = 0,
+    LAYER_SPECIAL,
+    ACTUATION_PROFILE_COUNT
+} actuation_layer_t;
+typedef enum {
+    INPUT_PRIORITY_RESOLUTION_LAST = 0,
+    INPUT_PRIORITY_RESOLUTION_PRIMARY,
+    INPUT_PRIORITY_RESOLUTION_SECONDARY,
+    INPUT_PRIORITY_RESOLUTION_NEUTRAL,
+    INPUT_PRIORITY_RESOLUTION_DEPTH,
+} input_priority_resolution_t;
+
+typedef struct {
+    uint8_t layer;
+    uint8_t primary_row;
+    uint8_t primary_col;
+    uint8_t secondary_row;
+    uint8_t secondary_col;
+    uint8_t resolution;
+} input_priority_t;
+
+typedef struct {
+    bool is_pressed[2];
+} input_priority_state_t;
+
+extern input_priority_state_t input_priority_states[NUM_INPUT_PRIORITY_PAIRS];
+
+extern uint8_t input_priority_indices[DYNAMIC_KEYMAP_LAYER_COUNT][MATRIX_ROWS][MATRIX_COLS];
+
+typedef struct {
+    actuation_t actuation_matrix[ACTUATION_PROFILE_COUNT][MATRIX_ROWS][MATRIX_COLS];
+    input_priority_t input_priority_pairs[NUM_INPUT_PRIORITY_PAIRS];
+    uint8_t switch_option;
+    uint8_t special_layer;
+} he_config_t;
+
+extern he_config_t he_config;

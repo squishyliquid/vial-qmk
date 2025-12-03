@@ -2,36 +2,51 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include "he_matrix.h"
+#include "he_sync.h"
+#include "he_keys.h"
 #include "he_adc.h"
 #include "lut.h"
+#include "split_util.h"
 
 static const pin_t mux_pins[MUX_BITS] = ALL_MUX_PINS;
 
-uint16_t *lut;
+uint8_t *lut;
 
-void init_mux_pins(void) {
+void mux_pin_init(void) {
     for (int i = 0; i < MUX_BITS; i++) {
         gpio_set_pin_output(mux_pins[i]);
         gpio_write_pin_low(mux_pins[i]);
     }
 }
 
-void initialise_hall_sensors(void) {
+void he_sensor_init(void) {
     wait_ms(100);
-    uint8_t offset_multiplier;
+    uint8_t offset_multiplier = 15;
+    lut = lut_340;
 
-    if (user_config.travel_distance == 320) {
-        lut = lut_320;
-        offset_multiplier = 12;
-    } else if (user_config.travel_distance == 380) {
-        lut = lut_380;
-        offset_multiplier = 15;
-    } else if (user_config.travel_distance == 390) {
-        lut = lut_390;
-        offset_multiplier = 18;
-    } else {
-        lut = lut_350;
-        offset_multiplier = 15;
+    uint8_t switch_option = he_config.switch_option;
+
+    switch (switch_option) {
+        case SWITCH_320: {
+            lut = lut_320;
+            offset_multiplier = 12;
+            break;
+        }
+        case SWITCH_340:
+        case SWITCH_350: {
+            break;
+        }
+        case SWITCH_380: {
+            lut = lut_380;
+            break;
+        }
+        case SWITCH_390: {
+            lut = lut_390;
+            offset_multiplier = 18;
+            break;
+        }
+        default:
+            break;
     }
 
     for (uint8_t c = 0; c < MATRIX_COLS; c++) {
@@ -43,20 +58,60 @@ void initialise_hall_sensors(void) {
         
         for (uint8_t r = 0; r < ROWS_PER_HAND; r++) {
 
+            key_state_t *key_state = &key_matrix[r][c];
+
             uint16_t analog_value = adc_channel_avg[r];
 
             if (analog_value < 100) {
                 continue;
             }
-            
-            keys[r][c].dynamic_actuation = false;
-            keys[r][c].curr_pos = 0;
-            keys[r][c].prev_pos = 0;
+
+            key_state->pos_curr = 0;
+            key_state->pos_prev = 0;
             
             uint16_t offset = (analog_value + 50) / 100 * offset_multiplier; 
 
-            keys[r][c].max_value = analog_value + offset;
-            keys[r][c].min_value = analog_value + 1;
+            key_state->adc_max = analog_value + offset;
+            key_state->adc_min = analog_value + 1;
+
+            uint32_t range = key_state->adc_max - key_state->adc_min;
+            const uint32_t target_resolution_shifted = 67108864; //(1024 * 65536)
+            key_state->scale = (target_resolution_shifted + (range >> 1)) / range;
         }
+    }
+}
+
+static bool synced = false;
+static bool full_sync = false;
+static bool he_sensor_reinit = false;
+
+bool get_synced_status(void) {
+    return synced;
+}
+
+void enable_full_sync(void) {
+    if (!full_sync) {
+        full_sync = true;
+    }
+}
+
+void enable_he_sensor_reinit(void) {
+    if (!he_sensor_reinit) {
+        he_sensor_reinit = true;
+    }
+}
+
+void housekeeping_task_kb(void) {
+    if (is_keyboard_master()) {
+        if (full_sync && !synced) {
+            if (is_transport_connected()) {
+                he_full_sync();
+                synced = true;
+            }
+        }
+    }
+    if (he_sensor_reinit) {
+        he_sensor_init();
+        he_sensor_reinit = false;
     }
 }
