@@ -11,6 +11,7 @@ he_config_t he_config = {
         [0 ... ACTUATION_PROFILE_COUNT - 1] = { 
             [0 ... MATRIX_ROWS - 1][0 ... MATRIX_COLS - 1] = {
                 DEFAULT_ACTUATION, 
+                DEFAULT_RESET, 
                 DEFAULT_RT_MODE, 
                 DEFAULT_RT_PRESS,
                 DEFAULT_RT_RELEASE

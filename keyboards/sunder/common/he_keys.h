@@ -22,6 +22,7 @@ typedef enum {
 } switch_t;
 
 #define DEFAULT_ACTUATION 128
+#define DEFAULT_RESET 255
 #define DEFAULT_RT_MODE 0
 #define DEFAULT_RT_PRESS 0
 #define DEFAULT_RT_RELEASE 0
@@ -32,6 +33,7 @@ typedef enum {
 
 typedef struct {
     uint8_t actuation_point;
+    uint8_t reset_point;
     uint8_t rt_mode;
     uint8_t rt_press;
     uint8_t rt_release;

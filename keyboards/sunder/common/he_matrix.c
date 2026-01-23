@@ -27,26 +27,26 @@ void he_sensor_init(void) {
     uint8_t switch_option = he_config.switch_option;
 
     switch (switch_option) {
-        case SWITCH_320: {
-            lut = lut_320;
-            offset_multiplier = 12;
-            break;
-        }
-        case SWITCH_340:
-        case SWITCH_350: {
-            break;
-        }
-        case SWITCH_380: {
-            lut = lut_380;
-            break;
-        }
-        case SWITCH_390: {
-            lut = lut_390;
-            offset_multiplier = 18;
-            break;
-        }
-        default:
-            break;
+    case SWITCH_320: {
+        lut = lut_320;
+        offset_multiplier = 12;
+        break;
+    }
+    case SWITCH_340:
+    case SWITCH_350: {
+        break;
+    }
+    case SWITCH_380: {
+        lut = lut_380;
+        break;
+    }
+    case SWITCH_390: {
+        lut = lut_390;
+        offset_multiplier = 18;
+        break;
+    }
+    default:
+        break;
     }
 
     for (uint8_t c = 0; c < MATRIX_COLS; c++) {

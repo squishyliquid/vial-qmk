@@ -515,6 +515,7 @@ void nvm_dynamic_keymap_reset_he_config(void) {
 
     actuation_t actuation_config = {
         .actuation_point = DEFAULT_ACTUATION,
+        .reset_point = DEFAULT_RESET,
         .rt_mode = DEFAULT_RT_MODE,
         .rt_press = DEFAULT_RT_PRESS,
         .rt_release = DEFAULT_RT_RELEASE

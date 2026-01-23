@@ -17,6 +17,7 @@ void he_full_sync(void) {
                     row,
                     col,
                     actuation_cfg->actuation_point,
+                    actuation_cfg->reset_point,
                     actuation_cfg->rt_mode,
                     actuation_cfg->rt_press,
                     actuation_cfg->rt_release
@@ -60,49 +61,50 @@ void he_sync_slave(uint8_t in_buflen, const void *in_data, uint8_t out_buflen, v
     const uint8_t* data = (const uint8_t*)in_data;
     
     switch (data[0]) {
-        case ACTUATION_SYNC: {
-            uint8_t profile = data[1];
-            uint8_t row = data[2];
-            uint8_t col = data[3];
+    case ACTUATION_SYNC: {
+        uint8_t profile = data[1];
+        uint8_t row = data[2];
+        uint8_t col = data[3];
 
-            actuation_t actuation_cfg = {
-                .actuation_point = data[4],
-                .rt_mode = data[5],
-                .rt_press = data[6],
-                .rt_release = data[7]
-            };
+        actuation_t actuation_cfg = {
+            .actuation_point = data[4],
+            .reset_point = data[5],
+            .rt_mode = data[6],
+            .rt_press = data[7],
+            .rt_release = data[8]
+        };
 
-            dynamic_keymap_set_he_actuation_config(profile, row, col, &actuation_cfg);
-            break;
-        }
-        case INPUT_PRIORITY_SYNC: {
-            uint8_t index = data[1];
+        dynamic_keymap_set_he_actuation_config(profile, row, col, &actuation_cfg);
+        break;
+    }
+    case INPUT_PRIORITY_SYNC: {
+        uint8_t index = data[1];
 
-            input_priority_t pair_cfg = {
-                .layer = data[2],
-                .primary_row = data[3],
-                .primary_col = data[4],
-                .secondary_row = data[5],
-                .secondary_col = data[6],
-                .resolution = data[7]
-            };
+        input_priority_t pair_cfg = {
+            .layer = data[2],
+            .primary_row = data[3],
+            .primary_col = data[4],
+            .secondary_row = data[5],
+            .secondary_col = data[6],
+            .resolution = data[7]
+        };
 
-            dynamic_keymap_set_he_input_priority_pair(index, &pair_cfg);
-            break;
-        }
-        case SWITCH_OPTION_SYNC: {
-            uint8_t switch_option = data[1];
+        dynamic_keymap_set_he_input_priority_pair(index, &pair_cfg);
+        break;
+    }
+    case SWITCH_OPTION_SYNC: {
+        uint8_t switch_option = data[1];
 
-            dynamic_keymap_set_he_switch(&switch_option);
-            break;
-        }
-        case SPECIAL_LAYER_SYNC: {
-            uint8_t layer_index = data[1];
-            dynamic_keymap_set_he_special_layer(&layer_index);
-            break;
-        }
-        default:
-            break;
+        dynamic_keymap_set_he_switch(&switch_option);
+        break;
+    }
+    case SPECIAL_LAYER_SYNC: {
+        uint8_t layer_index = data[1];
+        dynamic_keymap_set_he_special_layer(&layer_index);
+        break;
+    }
+    default:
+        break;
     }
 }
 

@@ -174,11 +174,12 @@ uint8_t matrix_scan(void) {
 
             // Update key states
             if (actuation_cfg->rt_mode == 0) {
+                uint8_t reset_point = (actuation_cfg->reset_point == 255) ? (actuation_cfg->actuation_point - act_buf) : actuation_cfg->reset_point;
                 key_state->key_dir = KEY_DIR_INACTIVE;
                 
                 if (key_state->pos_curr > actuation_cfg->actuation_point) {
                     key_state->is_pressed = true;
-                } else if (key_state->pos_curr <= (actuation_cfg->actuation_point - act_buf)) {
+                } else if (key_state->pos_curr <= (reset_point)) {
                     key_state->is_pressed = false;
                 }
             } else {
@@ -361,16 +362,16 @@ uint8_t matrix_scan(void) {
                             is_pressed[0] = pair_state->is_pressed[0];
                             is_pressed[1] = pair_state->is_pressed[1];
                         }
-                    } else {
+                    } else if (is_pressed[0] & is_pressed[1]) {
                         is_pressed[0] = pair_state->is_pressed[0];
                         is_pressed[1] = pair_state->is_pressed[1];
                     }
 
                     for (uint32_t i = 0; i < 2; i++) {
-                        if (is_pressed[i] & !pair_state->is_pressed[i]) {
+                        if (is_pressed[i]) {
                             pair_state->is_pressed[i] = is_pressed[i];
                             curr_matrix[row_pairs[i]] |= (1 << col_pairs[i]);
-                        } else if (!is_pressed[i] & pair_state->is_pressed[i]) {
+                        } else if (!is_pressed[i]) {
                             pair_state->is_pressed[i] = is_pressed[i];
                             curr_matrix[row_pairs[i]] &= ~(1 << col_pairs[i]);
                         }

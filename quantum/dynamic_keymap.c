@@ -134,6 +134,7 @@ int dynamic_keymap_set_he_actuation_config(uint8_t profile, uint8_t row, uint8_t
             row,
             col,
             actuation_cfg->actuation_point,
+            actuation_cfg->reset_point,
             actuation_cfg->rt_mode,
             actuation_cfg->rt_press,
             actuation_cfg->rt_release
