@@ -24,6 +24,7 @@
 
 #define VIAL_PROTOCOL_VERSION ((uint32_t)0x00000006)
 #define VIAL_RAW_EPSIZE 32
+#define VIAL_HE_FIRMWARE_VERSION 0
 
 void vial_init(void);
 void vial_handle_cmd(uint8_t *data, uint8_t length);
@@ -57,6 +58,7 @@ enum {
     vial_he_reset = 0x14,
     vial_get_he_special_layer = 0x15,
     vial_set_he_special_layer = 0x16,
+    vial_get_he_version = 0x17,
 };
 
 enum {

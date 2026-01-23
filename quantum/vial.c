@@ -389,6 +389,11 @@ void vial_handle_cmd(uint8_t *msg, uint8_t length) {
             msg[0] = dynamic_keymap_set_he_special_layer(&layer_index);
             break;
         }
+        case vial_get_he_version: {
+            msg[0] = 0;
+            msg[1] = VIAL_HE_FIRMWARE_VERSION;
+            break;
+        }
     
 #endif
     }
